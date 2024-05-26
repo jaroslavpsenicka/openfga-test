@@ -1,0 +1,11 @@
+model
+  schema 1.1
+
+type user
+type partner
+
+type client
+  relations
+    define owner: [partner]
+    define viewer: [user, user:*]
+    define editor: [user, user:*]
