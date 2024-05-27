@@ -34,7 +34,6 @@ function auth(req, res, next) {
 
 const Client = mongoose.model('Client', { name: String, ownedBy: String, partner: String });
 
-
 const fgaClient = new OpenFgaClient({
   apiUrl: process.env.FGA_API_URL, // required, e.g. https://api.fga.example
   storeId: process.env.FGA_STORE_ID,
