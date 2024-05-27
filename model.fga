@@ -3,6 +3,8 @@ model
 
 type user
 type partner
+  relations
+    define viewer: [user, user:*]
 
 type client
   relations
