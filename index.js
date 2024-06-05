@@ -32,7 +32,7 @@ function auth(req, res, next) {
   })
 }
 
-const Client = mongoose.model('Client', { name: String, ownedBy: String, partner: String });
+const Client = mongoose.model('Client', { name: String, ownedBy: String });
 
 const fgaClient = new OpenFgaClient({
   apiUrl: process.env.FGA_API_URL, // required, e.g. https://api.fga.example
@@ -46,35 +46,47 @@ app.get('/auth', (req, res) => {
 })
 
 app.post('/fga', async (req, res) => {
-  await fgaClient.write({ writes: [{ user: "user:mary", relation: "editor", object: "client:6653047e4bf73797e87c7f11" }]});
-  await fgaClient.write({ writes: [{ user: "user:mary", relation: "viewer", object: "client:6653047e4bf73797e87c7f11" }]});
-  await fgaClient.write({ writes: [{ user: "user:patrick", relation: "viewer", object: "partner:doe.com" }]});
-  res.send();
-})
 
-app.get('/fga', auth, async (req, res) => {
-  const user = req.user.email.substr(0, req.user.email.indexOf('@'));
-  const clients = await fgaClient.listObjects({ user: `user:${user}`, relation: "viewer", type: "client" });
-  res.send(clients?.objects);
+  // partner hierarchy
+  await fgaClient.write({ writes: [{ user: "partner:doe.com", relation: "parent", object: "partner:foo.com" }]});
+
+  // client ownership
+  await fgaClient.write({ writes: [{ user: "partner:doe.com", relation: "owner", object: "client:6653047e4bf73797e87c7f11" }]});
+  await fgaClient.write({ writes: [{ user: "partner:doe.com", relation: "owner", object: "client:665306a4ac2cf460ea3275cb" }]});
+  await fgaClient.write({ writes: [{ user: "partner:foo.com", relation: "owner", object: "client:6660600b204cbe5ba84f18c7" }]});
+
+  // access control
+  await fgaClient.write({ writes: [{ user: "user:patrick", relation: "viewer", object: "partner:doe.com" }]});
+  await fgaClient.write({ writes: [{ user: "user:mary", relation: "editor", object: "client:6653047e4bf73797e87c7f11" }]});
+  await fgaClient.write({ writes: [{ user: "user:patrick", relation: "commissioner", object: "partner:foo.com" }]});
+
+  res.send();
 })
 
 app.get('/clients', auth, async (req, res) => {
   const user = req.user.email.substr(0, req.user.email.indexOf('@'));
-  const partnerIds = await fgaClient.listObjects({ user: `user:${user}`, relation: "viewer", type: "partner" })
+  const viewers = await fgaClient.listObjects({ user: `user:${user}`, relation: "viewer", type: "client" })
     .then(res => res.objects.map(o => o.substr(o.indexOf(":")+1)))
-  const viewerIds = await fgaClient.listObjects({ user: `user:${user}`, relation: "viewer", type: "client" })
-    .then(res => res.objects.map(o => o.substr(o.indexOf(":")+1)))
-  const editorIds = await fgaClient.listObjects({ user: `user:${user}`, relation: "editor", type: "client" })
-    .then(res => res.objects.map(o => o.substr(o.indexOf(":")+1)))
-  console.log('user:', user, 'partner ids:', partnerIds, 'viewer ids:', viewerIds, 'editor ids:', editorIds);
 
-  const clients = await Client.find({ $or: [
-    { ownedBy: req.user.email }, 
-    { partner: { $in: partnerIds }}, 
-    { _id: { $in: [...viewerIds, ...editorIds] }} 
-  ]});
-
+  const clients = await Client.find({ $or: [{ ownedBy: req.user.email }, { _id: { $in: viewers }}]});
   res.send(clients.map(c => c.name));
+})
+
+app.get('/clients/:id', auth, async (req, res) => {
+  const user = req.user.email.substr(0, req.user.email.indexOf('@'));
+  const client = await Client.findById(req.params.id);
+  const isOwner = client.ownedBy === req.user.email;
+  const isViewer = await fgaClient.check({ user: `user:${user}`, relation: "viewer", object: `client:${req.params.id}` })
+  const isEditor = await fgaClient.check({ user: `user:${user}`, relation: "editor", object: `client:${req.params.id}` })
+  const isCommissioner = await fgaClient.check({ user: `user:${user}`, relation: "commissioner", object: `client:${req.params.id}` })
+
+  res.send({ 
+    name: client.name, 
+    owner: isOwner, 
+    view: isViewer.allowed || isOwner, 
+    edit: isEditor.allowed || isOwner, 
+    commissions: isCommissioner.allowed || isOwner
+  });
 })
 
 app.post('/clients/:id', auth, async (req, res) => {

@@ -2,12 +2,17 @@ model
   schema 1.1
 
 type user
+
 type partner
   relations
-    define viewer: [user, user:*]
+    define parent: [partner]
+    define viewer: [user] or editor or viewer from parent or editor from parent
+    define editor: [user] or editor from parent
+    define commissioner: [user] or commissioner from parent
 
 type client
   relations
     define owner: [partner]
-    define viewer: [user, user:*]
-    define editor: [user, user:*]
+    define viewer: [user] or editor or viewer from owner 
+    define editor: [user] or editor from owner    
+    define commissioner: [user] or commissioner from owner
