@@ -101,6 +101,19 @@ app.post('/clients/:id', auth, async (req, res) => {
   res.send(client);
 })
 
+app.get('/clients/:id/users/:rel', auth, async (req, res) => {
+  const viewers = await fgaClient.listUsers({ object: { type: 'client', id: req.params.id }, relation: req.params.rel, user_filters: [{ type: "user" }]})
+    .then(res => res.users.map(o => `${o.object.type}:${o.object.id}`))
+  res.send(viewers);
+})
+
+app.get('/clients/:id/relations', auth, async (req, res) => {
+  const user = req.user.email.substr(0, req.user.email.indexOf('@'));
+  const relations = await fgaClient.listRelations({ user: `user:${user}`, object: `client:${req.params.id}`, relations: ['viewer', 'editor', 'commissioner'] })
+    .then(res => res.relations.map(o => o.substr(o.indexOf(":")+1)))
+  res.send(relations);
+})
+
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, (err) => console.log(err ? err : `Listening on http://localhost:${PORT}`));
 
